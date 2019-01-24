@@ -27,10 +27,12 @@ class Bot:
         self.lstn = threading.Thread(target=self.__listen, args=())
         self.lstn.setDaemon(True)
         self.lstn.start()
-        self.pingmsg = msgpack.packb({'msgtype':'ping','nodeid':self.nd_id,'msgid':1})
+        self.pingmsg = msgpack.packb({'msgtype':'ping','nodeid':self.nd_id,'msgid':1,'ddrp':'127.0.0.1','ddrsck':self.sock.getsockname()[1]})
+
+        print(self.sock)
  
     def __pong(self,data,addr):
-        reply_data = msgpack.packb({'msgtype':'pong', 'nodeid':self.nd_id, 'replyto':data['msgid']},use_bin_type=True)
+        reply_data = msgpack.packb({'msgtype':'pong', 'nodeid':self.nd_id, 'replyto':data['msgid'],'ddrp':'127.0.0.1','ddrsck':self.sock.getsockname()[1]},use_bin_type=True)
         self.sock.sendto(reply_data,addr)
 
     def ping(self,addr):
@@ -64,7 +66,7 @@ class Bot:
                 j+=1
             i+=1
 
-        for i in d: self.Ndx.append(i)
+        for i in d: self.Ndx.append({'nodeid':i['nodeid'],'ddrp':i['ddrp'],'ddrsck':i['ddrsck']})
 
     def scanPorts(self):
         l = [i for i in range(1,65535+1)]
