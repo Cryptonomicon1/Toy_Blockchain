@@ -2,9 +2,11 @@
 --TODO.0001: Make it so threads can close--
 --TODO.0002: Make pong function--
 --TODO.0003: Make Scan function--
-TODO.0004: Make trade data function
-TODO.0005: Make function that uses scan and trades data when it findsa new node.
+--TODO.0004: Make trade data function--
+--TODO.0005: Make function that uses scan and trades data when it findsa new node.--
 TODO.0006: Make flood to build routing table algorithm
+TODO.0007: 
+
 '''
 
 import socket
@@ -48,29 +50,23 @@ class Bot:
             hndl = threading.Thread(target=self.__hndlPckTyp, args=(data, in_addr))
             hndl.start()
             '''
+            # Trouble Shooting Tool
             print("Node: ",self.nd_id)
             print("Known Nodes: ",self.Ndx)
             print(" ")
             '''
     def __hndlPckTyp(self, d, a):
         mt = 'msgtype'
-        #print('node: ',self.nd_id,' ',d)
+        #print('node: ',self.nd_id,' ',d) #Tshoot Tool
         if isinstance(d,dict) and d[mt] == 'ping':
-            self.__chckPsh2Ndx([d])
+            self.__chckPshNdx([d])
             self.__pong(d, a)
         elif isinstance(d,dict) and d[mt] == 'pong':
-            self.__chckPsh2Ndx([d])
+            self.__chckPshNdx([d])
         elif isinstance(d,list) and d[0][mt] == 'index':
-            self.__chckPsh2Ndx(d)
-    '''
+            self.__chckPshNdx(d)
+
     def __chckPshNdx(self, d, n='nodeid'):
-        psh_flg = True
-        for i in range(len(self.Ndx)):
-            if self.Ndx[i][n] == d[n] or self.nd_id == d[n]:
-                psh_flg = False
-        if psh_flg: self.__pshNdx([d])
-    '''
-    def __chckPsh2Ndx(self, d, n='nodeid'):
         for i in self.Ndx:
             if i[n] not in self.id_lst: self.id_lst.append(i[n])
 
@@ -83,7 +79,7 @@ class Bot:
                 self.Ndx.append({n:i[n],'ddrp':i['ddrp'],'ddrsck':i['ddrsck']})
         dlt_cnt = len(self.Ndx) - dlt_cnt
 
-        if len(self.Ndx) < 7 and dlt_cnt > 0: #TShoot Tool
+        if '''len(self.Ndx) < 7 and''' dlt_cnt > 0: #TShoot Tool
             self.__bCstNdx(self.Ndx)
 
     def __bCstNdx(self, ndx, n='nodeid'):
@@ -111,10 +107,3 @@ node[0].scnPrts()
 
 for i in range(len(node)):
     print('Node: ',i,': ',node[i].Ndx)
-
-# Test Network
-# import P2PNet0001
-# import msgpack
-# node = P2PNet0001.FileShareNode({})
-# pingmsg = msgpack.packb({'msgtype':'ping','msgid':1337})
-# node.sock.sendto(pingmsg,('127.0.0.1',35795))
