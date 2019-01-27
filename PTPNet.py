@@ -22,12 +22,13 @@ class Bot:
         self.nd_id = nd_id
         self.Ndx = []
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(('',0))
+        self.sock.bind(('127.0.0.1',0))
         print("Listening for peers on UDP port", self.sock.getsockname()[1])
         self.lstn = threading.Thread(target=self.__listen, args=())
         self.lstn.setDaemon(True)
         self.lstn.start()
-        self.pingmsg = msgpack.packb({'msgtype':'ping','nodeid':self.nd_id,'msgid':1,'ddrp':'127.0.0.1','ddrsck':self.sock.getsockname()[1]})
+        self.prt_cnt = 65535
+        self.id_lst = [self.nd_id]
 
         print(self.sock)
  
@@ -36,52 +37,80 @@ class Bot:
         self.sock.sendto(reply_data,addr)
 
     def ping(self,addr):
-        self.sock.sendto(self.pingmsg,addr)
+        pingmsg = msgpack.packb({'msgtype':'ping','nodeid':self.nd_id,'msgid':1,'ddrp':'127.0.0.1','ddrsck':self.sock.getsockname()[1]})
+        self.sock.sendto(pingmsg,addr)
 
     def __listen(self):
         while True:
             in_data,in_addr = self.sock.recvfrom(65536)
             data = msgpack.unpackb(in_data, encoding='utf-8')
 
-            tmp = data if isinstance(data,list) else [data]
-            self.__pshNdx(tmp)
-
-            #pprint.pprint((in_addr,data))
-            print("I am node: ",self.nd_id)
+            hndl = threading.Thread(target=self.__hndlPckTyp, args=(data, in_addr))
+            hndl.start()
+            '''
+            print("Node: ",self.nd_id)
             print("Known Nodes: ",self.Ndx)
             print(" ")
+            '''
+    def __hndlPckTyp(self, d, a):
+        mt = 'msgtype'
+        #print('node: ',self.nd_id,' ',d)
+        if isinstance(d,dict) and d[mt] == 'ping':
+            self.__chckPsh2Ndx([d])
+            self.__pong(d, a)
+        elif isinstance(d,dict) and d[mt] == 'pong':
+            self.__chckPsh2Ndx([d])
+        elif isinstance(d,list) and d[0][mt] == 'index':
+            self.__chckPsh2Ndx(d)
+    '''
+    def __chckPshNdx(self, d, n='nodeid'):
+        psh_flg = True
+        for i in range(len(self.Ndx)):
+            if self.Ndx[i][n] == d[n] or self.nd_id == d[n]:
+                psh_flg = False
+        if psh_flg: self.__pshNdx([d])
+    '''
+    def __chckPsh2Ndx(self, d, n='nodeid'):
+        for i in self.Ndx:
+            if i[n] not in self.id_lst: self.id_lst.append(i[n])
 
-            if data['msgtype']=='ping':
-                self.__pong(data, in_addr)
+        self.__pshNdx(d)
 
-    def __pshNdx(self,d):
-        n = 'nodeid'
-        i=0
-        j=0
-        while i in range(len(self.Ndx)):
-            while j in range(len(d)):
-                #print("test: ",i,j,d)
-                if self.nd_id == d[j][n]: d.pop(j)
-                if len(d) > 0 and self.Ndx[i][n] == d[j][n]: d.pop(j)
-                j+=1
-            i+=1
+    def __pshNdx(self, d, n='nodeid'):
+        dlt_cnt = len(self.Ndx)
+        for i in d:
+            if i[n] not in self.id_lst:
+                self.Ndx.append({n:i[n],'ddrp':i['ddrp'],'ddrsck':i['ddrsck']})
+        dlt_cnt = len(self.Ndx) - dlt_cnt
 
-        for i in d: self.Ndx.append({'nodeid':i['nodeid'],'ddrp':i['ddrp'],'ddrsck':i['ddrsck']})
+        if len(self.Ndx) < 7 and dlt_cnt > 0: #TShoot Tool
+            self.__bCstNdx(self.Ndx)
 
-    def scanPorts(self):
-        l = [i for i in range(1,65535+1)]
+    def __bCstNdx(self, ndx, n='nodeid'):
+        ndx[0]['msgtype'] = 'index'
+        m = msgpack.packb(ndx,use_bin_type=True)
+        for i in ndx:
+            if self.nd_id != i[n]:
+                self.sock.sendto(m, (i['ddrp'], i['ddrsck']))
+
+    def scnPrts(self):
+        l = [i for i in range(1,self.prt_cnt+1)]
         for i in l:
             try:
-                #print('pinging port: ',i)
+                #print('pinging port: ',i) #Trouble Shooting Tool
                 self.ping(('127.0.0.1',i))
             except OSError:
                 pass
 
 node = []
+i = 0
 for i in range(5):
     node.append(Bot({},i))
 
-node[1].scanPorts()
+node[0].scnPrts()
+
+for i in range(len(node)):
+    print('Node: ',i,': ',node[i].Ndx)
 
 # Test Network
 # import P2PNet0001
