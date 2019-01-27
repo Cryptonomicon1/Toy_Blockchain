@@ -5,8 +5,10 @@
 --TODO.0004: Make trade data function--
 --TODO.0005: Make function that uses scan and trades data when it findsa new node.--
 TODO.0006: Make flood to build routing table algorithm
-TODO.0007: 
-
+--TODO.0007: Add blockchain to each node--
+--TODO.0008: Add pshBlck function--
+--TODO.0009: Make Nodes Share Blocks--
+TODO.0010: Keep Each Node up2date on their blckchn
 '''
 
 import socket
@@ -14,8 +16,12 @@ import msgpack
 import pprint
 import threading
 from contextlib import suppress
+import hashlib as hsh
+import random as r
+from datetime import datetime as dt
+import time as t
 
-the_files = {'coolstuff.txt':'Hey, this is the contents of a cool text file', 'epic awesome music.mp3':'Not an actual MP3, but you get the idea'}
+r.seed(a=None)
 
 # Create our UDP socket and bind it to a random port on all interfaces
 class Bot:
@@ -23,16 +29,21 @@ class Bot:
         self.file_contents = files
         self.nd_id = nd_id
         self.Ndx = []
+        self.blk_bffr = []
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(('127.0.0.1',0))
-        print("Listening for peers on UDP port", self.sock.getsockname()[1])
+        print("Node:", self.nd_id,"listening on port:", self.sock.getsockname()[1])
         self.lstn = threading.Thread(target=self.__listen, args=())
         self.lstn.setDaemon(True)
         self.lstn.start()
+        self.chn_pshr = threading.Thread(target=self.__blkChnPshrDmn, args=())
+        self.chn_pshr.setDaemon(True)
+        self.chn_pshr.start()
         self.prt_cnt = 65535
         self.id_lst = [self.nd_id]
+        self.blck_chn = [{'data':'1st blk','nonce':1,'datetime':'2019-01-27 09:35:46.817316','hash':hsh.md5(b'1st blk12019-01-27 09:35:46.817316').hexdigest()}]
 
-        print(self.sock)
+        #print(self.sock) # Troubleshooting Tool
  
     def __pong(self,data,addr):
         reply_data = msgpack.packb({'msgtype':'pong', 'nodeid':self.nd_id, 'replyto':data['msgid'],'ddrp':'127.0.0.1','ddrsck':self.sock.getsockname()[1]},use_bin_type=True)
@@ -65,6 +76,11 @@ class Bot:
             self.__chckPshNdx([d])
         elif isinstance(d,list) and d[0][mt] == 'index':
             self.__chckPshNdx(d)
+        elif isinstance(d,dict) and d[mt] == 'block':
+            del d[mt]
+            self.__pshBlkBffr(d)
+        elif isinstance(d,list) and d[0][mt] == 'blockchain':
+            self.__rplcBlkChn(d)
 
     def __chckPshNdx(self, d, n='nodeid'):
         for i in self.Ndx:
@@ -79,7 +95,7 @@ class Bot:
                 self.Ndx.append({n:i[n],'ddrp':i['ddrp'],'ddrsck':i['ddrsck']})
         dlt_cnt = len(self.Ndx) - dlt_cnt
 
-        if '''len(self.Ndx) < 7 and''' dlt_cnt > 0: #TShoot Tool
+        if dlt_cnt > 0: #TShoot Tool
             self.__bCstNdx(self.Ndx)
 
     def __bCstNdx(self, ndx, n='nodeid'):
@@ -98,12 +114,100 @@ class Bot:
             except OSError:
                 pass
 
+    def __mkBlkHsh(self, blk, lst_hsh):
+        s = str(blk['data'])
+        s += str(blk['nonce'])
+        s += blk['datetime']
+        s += lst_hsh
+        return hsh.md5(s.encode()).hexdigest()
+
+    def bldPshBlk(self, data):
+        data = {'data':data}
+        data['nonce'] = r.randint(1,1000)
+        data['datetime'] = str(dt.now())
+        data['hash'] = self.__mkBlkHsh(data, self.blck_chn[-1]['hash'])
+        self.__bCstBlk(data)
+        t.sleep(1)
+        self.__pshBlkBffr(data)
+
+    def __pshBlk(self, blk):
+        if blk != self.blck_chn[-1]:
+            self.blck_chn.append(blk)
+
+    def __rplcBlkChn(self, chn):
+        if len(chn) > len(self.blck_chn):
+            del chn[0]['msgtype']
+            self.blck_chn = chn
+
+    def __bCstBlk(self, blk):
+        blk['msgtype'] = 'block'
+        m = msgpack.packb(blk,use_bin_type=True)
+        for i in self.Ndx:
+            self.sock.sendto(m, (i['ddrp'], i['ddrsck']))
+            
+    def __bCstBlkChn(self, chn):
+        chn[0]['msgtype'] = 'blockchain'
+        m = msgpack.packb(chn,use_bin_type=True)
+        for i in self.Ndx:
+            self.sock.sendto(m, (i['ddrp'], i['ddrsck']))
+
+    def __pshBlkBffr(self, blk):
+        if blk not in self.blk_bffr:
+            self.blk_bffr.append(blk)
+
+    def __blkChnPshrDmn(self):
+        while True:
+            i = 0
+            while i in range(len(self.blk_bffr)):
+                blk_hsh = self.blk_bffr[i]['hash']
+                ndd_hsh = self.__mkBlkHsh(self.blk_bffr[i], self.blck_chn[-1]['hash'])
+                if blk_hsh == ndd_hsh:
+                    self.__pshBlk(self.blk_bffr[i])
+                    del self.blk_bffr[i]
+                else:
+                    i+=1
+            t.sleep(0.25)
+
+# Testing Portion of the code.
+# Everything below can be deleted
+
+print(' ')
+print("Building Nodes")
 node = []
 i = 0
 for i in range(5):
     node.append(Bot({},i))
 
+print(' ')
+print("Nodes are finding each other.")
 node[0].scnPrts()
 
+# Troubleshooting Tool
 for i in range(len(node)):
-    print('Node: ',i,': ',node[i].Ndx)
+    for j in range(len(node[i].Ndx)):
+        print('Node:',i,'found',node[i].Ndx[j]['nodeid'],'@',node[i].Ndx[j]['ddrsck'])
+    print(' ')
+
+d = 1
+tmp = "Alice -> Bill 5 Chunky Monkeys"
+print("Pushing", tmp,"onto Block Chain")
+node[0].bldPshBlk(tmp)
+
+tmp = "Alice -> Bill 3 Chunky Monkeys"
+print("Pushing", tmp,"onto Block Chain")
+node[3].bldPshBlk(tmp)
+
+tmp = "Bill -> Alice 2 Chunky Monkeys"
+print("Pushing", tmp,"onto Block Chain")
+node[0].bldPshBlk(tmp)
+
+tmp = "Bill -> Charlie 10 Chunky Monkeys"
+print("Pushing", tmp,"onto Block Chain")
+node[3].bldPshBlk(tmp)
+t.sleep(4)
+
+for i in range(len(node)):
+    print(' ')
+    print('Node: ', node[i].nd_id)
+    for j in node[i].blck_chn:
+        print(j['data'], j['hash'])
